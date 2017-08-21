@@ -9,7 +9,7 @@
 
 Name:		llvm
 Version:	4.0.1
-Release:	3%{?dist}
+Release:	4%{?dist}
 Summary:	The Low Level Virtual Machine
 
 License:	NCSA
@@ -28,7 +28,11 @@ BuildRequires:	cmake
 BuildRequires:	zlib-devel
 BuildRequires:  libffi-devel
 BuildRequires:	ncurses-devel
+%if 0%{?fedora} || 0%{?rhel} > 7
 BuildRequires:	python3-sphinx
+%else
+BuildRequires:	python-sphinx
+%endif
 BuildRequires:	multilib-rpm-config
 %if %{with gold}
 BuildRequires:  binutils-devel
@@ -142,8 +146,10 @@ cd _build
 	-DLLVM_BUILD_EXTERNAL_COMPILER_RT:BOOL=ON \
 	-DLLVM_INSTALL_TOOLCHAIN_ONLY:BOOL=OFF \
 	\
+%if 0%{?fedora} || 0%{?rhel} > 7
 	-DSPHINX_WARNINGS_AS_ERRORS=OFF \
 	-DSPHINX_EXECUTABLE=%{_bindir}/sphinx-build-3
+%endif
 
 make %{?_smp_mflags}
 
@@ -204,6 +210,9 @@ fi
 %{_libdir}/cmake/llvm/LLVMStaticExports.cmake
 
 %changelog
+* Mon Aug 21 2017 Jajauma's Packages <jajauma@yandex.ru> - 4.0.1-4
+- Build with python-sphinx on RHEL7
+
 * Thu Aug 03 2017 Fedora Release Engineering <releng@fedoraproject.org> - 4.0.1-3
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_27_Binutils_Mass_Rebuild
 
