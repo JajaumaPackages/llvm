@@ -9,7 +9,7 @@
 
 Name:		llvm
 Version:	5.0.0
-Release:	1%{?dist}
+Release:	2%{?dist}
 Summary:	The Low Level Virtual Machine
 
 License:	NCSA
@@ -200,13 +200,16 @@ fi
 %exclude %{_libdir}/cmake/llvm/LLVMStaticExports.cmake
 
 %files doc
-%doc %{_pkgdocdir}/html
+%doc %{_docdir}/%{name}/
 
 %files static
 %{_libdir}/*.a
 %{_libdir}/cmake/llvm/LLVMStaticExports.cmake
 
 %changelog
+* Tue Nov 14 2017 Jajauma's Packages <jajauma@yandex.ru> - 5.0.0-2
+- Fix broken documentation package after upgrade to RHEL7.4
+
 * Fri Sep 08 2017 Jajauma's Packages <jajauma@yandex.ru> - 5.0.0-1
 - Update to latest upstream release
 
