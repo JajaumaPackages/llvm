@@ -6,10 +6,13 @@
 %endif
 
 %global llvm_bindir %{_libdir}/%{name}
+%global maj_ver 5
+%global min_ver 0
+%global patch_ver 0
 
 Name:		llvm
-Version:	5.0.0
-Release:	2%{?dist}
+Version:	%{maj_ver}.%{min_ver}.%{patch_ver}
+Release:	4%{?dist}
 Summary:	The Low Level Virtual Machine
 
 License:	NCSA
@@ -19,6 +22,9 @@ Source0:	http://llvm.org/releases/%{version}/%{name}-%{version}.src.tar.xz
 # recognize s390 as SystemZ when configuring build
 Patch0:		llvm-3.7.1-cmake-s390.patch
 Patch3:		0001-CMake-Split-static-library-exports-into-their-own-ex.patch
+# FIXME: Symbol versioning breaks some unittests when statically linking
+# libstdc++, so we disable it for now.
+Patch4:		0001-Revert-Add-a-linker-script-to-version-LLVM-symbols.patch
 
 BuildRequires:	cmake
 BuildRequires:	zlib-devel
@@ -34,6 +40,10 @@ BuildRequires:	multilib-rpm-config
 BuildRequires:  binutils-devel
 %endif
 BuildRequires:  libstdc++-static
+# Enable extra functionality when run the LLVM JIT under valgrind.
+BuildRequires:  valgrind-devel
+# LLVM's LineEditor library will use libedit if it is available.
+BuildRequires:  libedit-devel
 
 Requires:	%{name}-libs%{?_isa} = %{version}-%{release}
 
@@ -46,6 +56,10 @@ tools as well as libraries with equivalent functionality.
 %package devel
 Summary:	Libraries and header files for LLVM
 Requires:	%{name}%{?_isa} = %{version}-%{release}
+# The installed LLVM cmake files will add -ledit to the linker flags for any
+# app that requires the libLLVMLineEditor, so we need to make sure
+# libedit-devel is available.
+Requires:	libedit-devel
 Requires(post): %{_sbindir}/alternatives
 Requires(postun): %{_sbindir}/alternatives
 
@@ -87,7 +101,7 @@ for f in `grep -Rl 'XFAIL.\+arm' test/ExecutionEngine `; do  rm $f; done
 mkdir -p _build
 cd _build
 
-%ifarch s390
+%ifarch s390 %{arm}
 # Decrease debuginfo verbosity to reduce memory consumption during final library linking
 %global optflags %(echo %{optflags} | sed 's/-g /-g1 /')
 %endif
@@ -97,7 +111,7 @@ cd _build
 	-DBUILD_SHARED_LIBS:BOOL=OFF \
 	-DCMAKE_BUILD_TYPE=RelWithDebInfo \
 	-DCMAKE_SHARED_LINKER_FLAGS="-Wl,-Bsymbolic -static-libstdc++" \
-%ifarch s390
+%ifarch s390 %{arm}
 	-DCMAKE_C_FLAGS_RELWITHDEBINFO="%{optflags} -DNDEBUG" \
 	-DCMAKE_CXX_FLAGS_RELWITHDEBINFO="%{optflags} -DNDEBUG" \
 %endif
@@ -175,11 +189,11 @@ fi
 
 %files
 %{_bindir}/*
-%{_datadir}/opt-viewer/
 %{llvm_bindir}
 %{_mandir}/man1/*.1.*
 %exclude %{_bindir}/llvm-config-%{__isa_bits}
 %exclude %{_mandir}/man1/llvm-config.1.*
+%{_datadir}/opt-viewer
 
 %files libs
 %{_libdir}/BugpointPasses.so
@@ -187,7 +201,7 @@ fi
 %if %{with gold}
 %{_libdir}/LLVMgold.so
 %endif
-%{_libdir}/libLLVM-5.0*.so
+%{_libdir}/libLLVM-%{maj_ver}.%{min_ver}*.so
 %{_libdir}/libLTO.so*
 
 %files devel
@@ -200,15 +214,16 @@ fi
 %exclude %{_libdir}/cmake/llvm/LLVMStaticExports.cmake
 
 %files doc
-%doc %{_docdir}/%{name}/
+%doc %{_docdir}/%{name}/html
 
 %files static
 %{_libdir}/*.a
 %{_libdir}/cmake/llvm/LLVMStaticExports.cmake
 
 %changelog
-* Tue Nov 14 2017 Jajauma's Packages <jajauma@yandex.ru> - 5.0.0-2
+* Tue Nov 14 2017 Jajauma's Packages <jajauma@yandex.ru> - 5.0.0-4
 - Fix broken documentation package after upgrade to RHEL7.4
+- Synchronize package with Fedora
 
 * Fri Sep 08 2017 Jajauma's Packages <jajauma@yandex.ru> - 5.0.0-1
 - Update to latest upstream release
