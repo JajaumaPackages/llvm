@@ -6,27 +6,27 @@
 %endif
 
 %global llvm_bindir %{_libdir}/%{name}
-%global maj_ver 5
+%global maj_ver 6
 %global min_ver 0
 %global patch_ver 0
 
 Name:		llvm
 Version:	%{maj_ver}.%{min_ver}.%{patch_ver}
-Release:	4%{?dist}
+Release:	6%{?dist}
 Summary:	The Low Level Virtual Machine
 
 License:	NCSA
 URL:		http://llvm.org
-Source0:	http://llvm.org/releases/%{version}/%{name}-%{version}.src.tar.xz
+Source0:	http://llvm.org/releases/%{version}/%{name}-%{version}%{?rc_ver:rc%{rc_ver}}.src.tar.xz
 
 # recognize s390 as SystemZ when configuring build
 Patch0:		llvm-3.7.1-cmake-s390.patch
 Patch3:		0001-CMake-Split-static-library-exports-into-their-own-ex.patch
-# FIXME: Symbol versioning breaks some unittests when statically linking
-# libstdc++, so we disable it for now.
-Patch4:		0001-Revert-Add-a-linker-script-to-version-LLVM-symbols.patch
+Patch5:		0001-DebugInfo-Discard-invalid-DBG_VALUE-instructions-in-.patch
+Patch6:		0001-Fixup-for-rL326769-RegState-Debug-is-being-truncated.patch
 
 BuildRequires:	cmake
+BuildRequires:	ninja-build
 BuildRequires:	zlib-devel
 BuildRequires:  libffi-devel
 BuildRequires:	ncurses-devel
@@ -88,7 +88,7 @@ Summary:	LLVM static libraries
 Static libraries for the LLVM compiler infrastructure.
 
 %prep
-%autosetup -n %{name}-%{version}.src -p1
+%autosetup -n %{name}-%{version}%{?rc_ver:rc%{rc_ver}}.src -p1
 
 %ifarch armv7hl
 
@@ -101,17 +101,16 @@ for f in `grep -Rl 'XFAIL.\+arm' test/ExecutionEngine `; do  rm $f; done
 mkdir -p _build
 cd _build
 
-%ifarch s390 %{arm}
+%ifarch s390 %{arm} %ix86
 # Decrease debuginfo verbosity to reduce memory consumption during final library linking
 %global optflags %(echo %{optflags} | sed 's/-g /-g1 /')
 %endif
 
 # force off shared libs as cmake macros turns it on.
-%cmake .. \
+%cmake .. -G Ninja \
 	-DBUILD_SHARED_LIBS:BOOL=OFF \
 	-DCMAKE_BUILD_TYPE=RelWithDebInfo \
-	-DCMAKE_SHARED_LINKER_FLAGS="-Wl,-Bsymbolic -static-libstdc++" \
-%ifarch s390 %{arm}
+%ifarch s390 %{arm} %ix86
 	-DCMAKE_C_FLAGS_RELWITHDEBINFO="%{optflags} -DNDEBUG" \
 	-DCMAKE_CXX_FLAGS_RELWITHDEBINFO="%{optflags} -DNDEBUG" \
 %endif
@@ -143,7 +142,7 @@ cd _build
 	\
 	-DLLVM_INCLUDE_UTILS:BOOL=ON \
 	-DLLVM_INSTALL_UTILS:BOOL=ON \
-	-DLLVM_UTILS_INSTALL_DIR:PATH=%{llvm_bindir} \
+	-DLLVM_UTILS_INSTALL_DIR:PATH=%{buildroot}%{llvm_bindir} \
 	\
 	-DLLVM_INCLUDE_DOCS:BOOL=ON \
 	-DLLVM_BUILD_DOCS:BOOL=ON \
@@ -156,16 +155,17 @@ cd _build
 	-DLLVM_BUILD_EXTERNAL_COMPILER_RT:BOOL=ON \
 	-DLLVM_INSTALL_TOOLCHAIN_ONLY:BOOL=OFF \
 	\
-%if 0%{?fedora} || 0%{?rhel} > 7
 	-DSPHINX_WARNINGS_AS_ERRORS=OFF \
+	-DCMAKE_INSTALL_PREFIX=%{buildroot}/usr \
+%if 0%{?fedora} || 0%{?rhel} > 7
 	-DSPHINX_EXECUTABLE=%{_bindir}/sphinx-build-3
 %endif
 
-make %{?_smp_mflags}
+ninja -v -j 1
 
 %install
 cd _build
-make install DESTDIR=%{buildroot}
+ninja -v install
 
 # fix multi-lib
 mv -v %{buildroot}%{_bindir}/llvm-config{,-%{__isa_bits}}
@@ -174,7 +174,7 @@ mv -v %{buildroot}%{_bindir}/llvm-config{,-%{__isa_bits}}
 
 %check
 cd _build
-make check-all || :
+ninja check-all || :
 
 %post libs -p /sbin/ldconfig
 %postun libs -p /sbin/ldconfig
@@ -221,15 +221,64 @@ fi
 %{_libdir}/cmake/llvm/LLVMStaticExports.cmake
 
 %changelog
-* Tue Nov 14 2017 Jajauma's Packages <jajauma@yandex.ru> - 5.0.0-4
-- Fix broken documentation package after upgrade to RHEL7.4
-- Synchronize package with Fedora
+* Wed Mar 14 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-6
+- Enable symbol versioning in libLLVM.so
 
-* Fri Sep 08 2017 Jajauma's Packages <jajauma@yandex.ru> - 5.0.0-1
-- Update to latest upstream release
+* Wed Mar 14 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-5
+- Stop statically linking libstdc++.  This is no longer required by Steam
+  client, but the steam installer still needs a work-around which should
+  be handled in the steam package.
+* Wed Mar 14 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-4
+- s/make check/ninja check/
 
-* Mon Aug 21 2017 Jajauma's Packages <jajauma@yandex.ru> - 4.0.1-4
-- Build with python-sphinx on RHEL7
+* Fri Mar 09 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-3
+- Backport fix for compile time regression on rust rhbz#1552915
+
+* Thu Mar 08 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-2
+- Build with Ninja: This reduces RPM build time on a 6-core x86_64 builder
+  from 82 min to 52 min.
+
+* Thu Mar 08 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-1
+- 6.0.0 Release
+
+* Thu Mar 08 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-0.5.rc2
+- Reduce debuginfo size on i686 to avoid OOM errors during linking
+
+* Fri Feb 09 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-0.4.rc2
+- 6.0.1 rc2
+
+* Fri Feb 09 2018 Igor Gnatenko <ignatenkobrain@fedoraproject.org> - 6.0.0-0.3.rc1
+- Escape macros in %%changelog
+
+* Thu Feb 08 2018 Fedora Release Engineering <releng@fedoraproject.org> - 6.0.0-0.2.rc1
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_28_Mass_Rebuild
+
+* Fri Jan 19 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-0.1.rc1
+- 6.0.1 rc1
+
+* Tue Dec 19 2017 Tom Stellard <tstellar@redhat.com> - 5.0.1-1
+- 5.0.1 Release
+
+* Mon Nov 20 2017 Tom Stellard <tstellar@redhat.com> - 5.0.0-5
+- Backport debuginfo fix for rust
+
+* Fri Nov 03 2017 Tom Stellard <tstellar@redhat.com> - 5.0.0-4
+- Reduce debuginfo size for ARM
+
+* Tue Oct 10 2017 Tom Stellard <tstellar@redhat.com> - 5.0.0-2
+- Reduce memory usage on ARM by disabling debuginfo and some non-ARM targets.
+
+* Mon Sep 25 2017 Tom Stellard <tstellar@redhat.com> - 5.0.0-1
+- 5.0.0 Release
+
+* Mon Sep 18 2017 Tom Stellard <tstellar@redhat.com> - 4.0.1-6
+- Add Requires: libedit-devel for llvm-devel
+
+* Fri Sep 08 2017 Tom Stellard <tstellar@redhat.com> - 4.0.1-5
+- Enable libedit backend for LineEditor API
+
+* Fri Aug 25 2017 Tom Stellard <tstellar@redhat.com> - 4.0.1-4
+- Enable extra functionality when run the LLVM JIT under valgrind.
 
 * Thu Aug 03 2017 Fedora Release Engineering <releng@fedoraproject.org> - 4.0.1-3
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_27_Binutils_Mass_Rebuild
@@ -259,7 +308,7 @@ fi
 - LLVM 4.0.0 Final Release
 
 * Wed Mar 22 2017 tstellar@redhat.com - 3.9.1-6
-- Fix %postun sep for -devel package.
+- Fix %%postun sep for -devel package.
 
 * Mon Mar 13 2017 Tom Stellard <tstellar@redhat.com> - 3.9.1-5
 - Disable failing tests on ARM.
