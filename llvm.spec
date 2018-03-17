@@ -161,7 +161,7 @@ cd _build
 	-DSPHINX_EXECUTABLE=%{_bindir}/sphinx-build-3
 %endif
 
-ninja -v -j 1
+ninja -v
 
 %install
 cd _build
